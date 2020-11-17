@@ -1,2 +1,2 @@
 # HSIN_App
-Customers can filter graphics based on the regions provided.
+This is an R shiny APP where consumers can filter graphics based on the regions provided.
