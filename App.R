@@ -1,4 +1,4 @@
-###################SERVER######################
+################### LOADING LIBRARIES ######################
 req_packages <- c("shiny",
                   "usmap",
                   "ggplot2",
@@ -9,28 +9,11 @@ req_packages <- c("shiny",
                   "DBI",
                   "RPostgreSQL")
 lapply(req_packages, require, character.only = TRUE)
-# ui=shinyUI(dashboardPage(
-#   dashboardHeader(title = "TEST TOBE"),
-#   
-#   #dashboardSidebar(width = 300),
-#   
-#   dashboardSidebar(width = 1
-#                    
-#                    #sidebarMenu(
-#                    # selectInput("Model", "Choose  model:",c("Random forest"))
-#                    #)
-#                    
-#   ),
-#   dashboardBody(
-#     
-#     tabsetPanel(
-#       tabPanel("Table",
-#                
-#                column(12,box(height =400,width = 800, solidHeader = FALSE, status = "success",
-#                              DT::dataTableOutput("table1")))
-#                
-#       )))))
 
+########################### END ############################
+
+
+################### CODE FOR THE FRONT END PART OF DASHBOARD ###########
 cluster_bar_names <- c("product_date",
                        "fc_sin",
                        "sar",
@@ -471,34 +454,49 @@ ui <- navbarPage("HSIN NavBar Prototype",
                  )
 )
 
+############################## END #################################
+
+
+######################### sTART OF THE SERVER PART #######################
 server <- function(input, output, session){
   
   db <- 'postgres' 
   host_db <- "database-2.c0gfscutioly.us-east-2.rds.amazonaws.com"
   db_port <- 5432   # or any other port specified by the DBA
   db_user <-  'postgres'
-  db_password <- 'lalaina30'
+  db_password <- 'postgres'
   drv <- dbDriver("PostgreSQL")
   #drv <- dbDriver("PostgreSQL")
   con <- dbConnect(drv, dbname = db, host=host_db, port=db_port, user=db_user, password=db_password)
-  default_query <- "SELECT * FROM load_from_s3.locations"
+  default_query <-"SELECT * FROM load_from_s3.docs
+left JOIN load_from_s3.author_map on author_map.unique_id = docs.unique_id
+left JOIN load_from_s3.authors on authors.author_id = author_map.author_id
+left JOIN load_from_s3.SBU_map On SBU_map.unique_id=docs.unique_id
+left JOIN load_from_s3.priority_map on priority_map.unique_id = docs.unique_id
+left JOIN load_from_s3.priorities on priorities.priority_id=priority_map.priority_id
+left JOIN load_from_s3.SIN_map on SIN_map.unique_id= docs.unique_id
+left JOIN load_from_s3.HSEC_SIN_data on hsec_sin_data.SIN_id =SIN_map.SIN_id
+left JOIN load_from_s3.SBU_data on SBU_data.SBU_id= SBU_map.SBU_id
+left JOIN load_from_s3.locations on locations.location_id= authors.location_id"
   
-  values <- reactiveValues(reports = dbGetQuery(con, default_query),
-                           map_data = dbGetQuery(con, default_query)%>%
+  data=dbGetQuery(con, default_query)%>%subset(., select = which(!duplicated(names(.))))
+  data$location_name<-sapply(strsplit(data$location_name, ";"), "[", 1)
+  values <- reactiveValues(reports = data,
+                           map_data = data%>%
                              group_by(location_name) %>%
                              summarize(topic_location = n()) %>%
                              rename(state = location_name) %>%
                              filter(state != "" & state != "All") %>%
                              mutate(state = tolower(state)),
-                           comp_reports_a = dbGetQuery(con, default_query),
-                           comp_map_data_a = dbGetQuery(con, default_query)%>%
+                           comp_reports_a = data,
+                           comp_map_data_a = data%>%
                              group_by(location_name) %>%
                              summarize(topic_location = n()) %>%
                              rename(state = location_name) %>%
                              filter(state != "" & state != "All") %>%
                              mutate(state = tolower(state)),
-                           comp_reports_b = dbGetQuery(con, default_query),
-                           comp_map_data_b = dbGetQuery(con, default_query)%>%
+                           comp_reports_b = data,
+                           comp_map_data_b = data%>%
                              group_by(location_name) %>%
                              summarize(topic_location = n()) %>%
                              rename(state = location_name) %>%
@@ -511,7 +509,16 @@ server <- function(input, output, session){
   observeEvent(input$submit_search, {
     con <- dbConnect(drv, dbname = db, host=host_db, port=db_port, user=db_user, password=db_password)
     if(input$searchterms == ""){
-      sql_query <- "SELECT * FROM load_from_s3.docs"
+      sql_query <- "SELECT * FROM load_from_s3.docs
+left JOIN load_from_s3.author_map on author_map.unique_id = docs.unique_id
+left JOIN load_from_s3.authors on authors.author_id = author_map.author_id
+left JOIN load_from_s3.SBU_map On SBU_map.unique_id=docs.unique_id
+left JOIN load_from_s3.priority_map on priority_map.unique_id = docs.unique_id
+left JOIN load_from_s3.priorities on priorities.priority_id=priority_map.priority_id
+left JOIN load_from_s3.SIN_map on SIN_map.unique_id= docs.unique_id
+left JOIN load_from_s3.HSEC_SIN_data on hsec_sin_data.SIN_id =SIN_map.SIN_id
+left JOIN load_from_s3.SBU_data on SBU_data.SBU_id= SBU_map.SBU_id
+left JOIN load_from_s3.locations on locations.location_id= authors.location_id"
     }else{
       searchterms <- strsplit(input$searchterms, " ") %>% unlist()
       or_operators <- grep("OR", searchterms)
@@ -548,9 +555,20 @@ server <- function(input, output, session){
       where_clause <-  where_clause %>%
         paste(or_clauses, sep = " ") %>%
         gsub(x = ., pattern = "WHERE[[:space:]]+AND", replacement = "WHERE")
-      sql_query <- paste("SELECT * FROM load_from_s3.docs " , where_clause, ";", sep = "")
+      
+      sql_query <- paste("SELECT * FROM load_from_s3.docs
+left JOIN load_from_s3.author_map on author_map.unique_id = docs.unique_id
+left JOIN load_from_s3.authors on authors.author_id = author_map.author_id
+left JOIN load_from_s3.SBU_map On SBU_map.unique_id=docs.unique_id
+left JOIN load_from_s3.priority_map on priority_map.unique_id = docs.unique_id
+left JOIN load_from_s3.priorities on priorities.priority_id=priority_map.priority_id
+left JOIN load_from_s3.SIN_map on SIN_map.unique_id= docs.unique_id
+left JOIN load_from_s3.HSEC_SIN_data on hsec_sin_data.SIN_id =SIN_map.SIN_id
+left JOIN load_from_s3.SBU_data on SBU_data.SBU_id= SBU_map.SBU_id
+left JOIN load_from_s3.locations on locations.location_id= authors.location_id")
     }
-    tmp <- dbGetQuery(con, sql_query)
+    
+    tmp <- data
     if(nrow(tmp) == 0){ showModal(modalDialog(
       title = "No Results",
       "This search yielded no results. Please try a different search."))}else{
@@ -594,20 +612,49 @@ server <- function(input, output, session){
         }
         
         values$reports <- tmp
+        values$comp_reports_b <- tmp
+        values$comp_map_data_b <- tmp %>%
+          group_by(location_name) %>%
+          summarize(topic_location = n()) %>%
+          rename(state = location_name) %>%
+          filter(state != "" & state != "All") %>%
+          mutate(state = tolower(state))
         
       }
     dbDisconnect(con)
   })
   
-  con <- dbConnect(drv, dbname = db, host=host_db, port=db_port, user=db_user, password=db_password)
+  #sql_query <- "SELECT * FROM load_from_s3.docs"
   
-  sql_query <- "SELECT * FROM load_from_s3.docs"
-  values$reports <- dbGetQuery(con, sql_query)
   
   #create results tables to display
   output$hsin_table <- renderDataTable(values$reports,
                                        options = list(pageLength = 10,
                                                       bLengthChange=FALSE))
+  
+  output$comp_hsin_table_a <- renderDataTable(values$comp_reports_a,
+                                              options = list(pageLength = 10,
+                                                             bLengthChange=FALSE))
+  
+  output$comp_hsin_table_b <- renderDataTable(values$comp_reports_b,
+                                              options = list(pageLength = 10,
+                                                             bLengthChange=FALSE))
+  #Standard
+  output$export_hsin_table <- downloadHandler(filename = "HSIN_reports.csv",
+                                              content = function(file){
+                                                write.csv(values$reports, file, row.names = FALSE)
+                                              })
+  #Comp A
+  output$export_comp_hsin_table_a <- downloadHandler(filename = "HSIN_reports.csv",
+                                                     content = function(file){
+                                                       write.csv(values$comp_reports_a, file, row.names = FALSE)
+                                                     })
+  #Comp B
+  output$export_comp_hsin_table_b <- downloadHandler(filename = "HSIN_reports.csv",
+                                                     content = function(file){
+                                                       write.csv(values$comp_reports_b, file, row.names = FALSE)
+                                                     })
+  
   
   #Histogram of report publish dates
   #Standard
@@ -615,6 +662,37 @@ server <- function(input, output, session){
     ggplot(values$reports, aes(x = product_date))+
       geom_histogram(bins = 30 ,fill = "navy blue")+
       theme_bw()})
+  #Comp A
+  output$comp_dist_plot_a <- renderPlot({
+    ggplot(values$comp_reports_a, aes(x = product_date))+
+      geom_histogram(bins = 30 ,fill = "navy blue")+
+      theme_bw()})
+  #Comp B
+  output$comp_dist_plot_b <- renderPlot({
+    ggplot(values$comp_reports_b, aes(x = product_date))+
+      geom_histogram(bins = 30 ,fill = "navy blue")+
+      theme_bw()})
+  
+  output$mapPlot <- renderPlot({
+    plot_usmap(data = values$map_data,
+               regions = "states",
+               values = "topic_location") +
+      labs(fill = "Topic Location")
+  })
+  #Comp A
+  output$comp_map_plot_a <- renderPlot({
+    plot_usmap(regions = "states",
+               data = values$comp_map_data_a,
+               values = "topic_location")+
+      labs(fill = "Topic Location")
+  })
+  #Comp B
+  output$comp_map_plot_b <- renderPlot({
+    plot_usmap(regions = "states",
+               data = values$comp_map_data_b,
+               values = "topic_location")+
+      labs(fill = "Topic Location")
+  })
   
   output$stackbarPlot <- renderPlot({
     #combine different boolean variables into one for ease of plotting
@@ -629,12 +707,68 @@ server <- function(input, output, session){
       geom_bar(position = "stack") +
       coord_flip()
   })
-  #Export results tables
+  
+  #Comp A
+  output$comp_stackbar_plot_a <- renderPlot({
+    pivot_longer(values$comp_reports_a,
+                 cols = c(sar,
+                          p_crcl,
+                          pii,
+                          foreign_release,
+                          private_release),
+                 names_to = "compliance_variable",
+                 values_to = "compliance_value") %>%
+      ggplot(aes(x = compliance_variable, fill = compliance_value))+
+      geom_bar(position = "stack") +
+      coord_flip()
+  })
+  #Comp B
+  output$comp_stackbar_plot_b <- renderPlot({
+    pivot_longer(values$comp_reports_b,
+                 cols = c(sar,
+                          p_crcl,
+                          pii,
+                          foreign_release,
+                          private_release),
+                 names_to = "compliance_variable",
+                 values_to = "compliance_value") %>%
+      ggplot(aes(x = compliance_variable, fill = compliance_value))+
+      geom_bar(position = "stack") +
+      coord_flip()
+  })
+  
+  #General purpose clustered barplot
   #Standard
-  output$export_hsin_table <- downloadHandler(filename = "HSIN_reports.csv",
-                                              content = function(file){
-                                                write.csv(values$reports, file, row.names = FALSE)
-                                              })
+  output$clusterbarPlot <- renderPlot({
+    ggplot(values$reports, aes(x = eval(as.name(input$cluster_x)),
+                               y = eval(as.name(input$cluster_y)),
+                               fill = eval(as.name(input$cluster_fill)))) +
+      labs(x = input$cluster_x,
+           y = input$cluster_y,
+           fill = input$cluster_fill) +
+      geom_col(position = "dodge")
+  })
+  #Comp A
+  output$comp_clusterbar_plot_a <- renderPlot({
+    ggplot(values$comp_reports_a, aes(x = eval(as.name(input$comp_cluster_x_a)),
+                                      y = eval(as.name(input$comp_cluster_y_a)),
+                                      fill = eval(as.name(input$comp_cluster_fill_a)))) +
+      labs(x = input$cluster_x,
+           y = input$cluster_y,
+           fill = input$cluster_fill) +
+      geom_col(position = "dodge")
+  })
+  #Comp B
+  output$comp_clusterbar_plot_b <- renderPlot({
+    ggplot(values$comp_reports_b, aes(x = eval(as.name(input$comp_cluster_x_b)),
+                                      y = eval(as.name(input$comp_cluster_y_b)),
+                                      fill = eval(as.name(input$comp_cluster_fill_b)))) +
+      labs(x = input$cluster_x,
+           y = input$cluster_y,
+           fill = input$cluster_fill) +
+      geom_col(position = "dodge")
+  })
+  
   
 }
 
