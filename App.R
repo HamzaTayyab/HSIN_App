@@ -463,8 +463,8 @@ server <- function(input, output, session){
   db <- 'postgres' 
   host_db <- "database-2.c0gfscutioly.us-east-2.rds.amazonaws.com"
   db_port <- 5432   # or any other port specified by the DBA
-  db_user <-  'postgres'
-  db_password <- 'postgres'
+  db_user <-  rstudioapi::askForPassword("Database username")
+  db_password <- rstudioapi::askForPassword("Database password")
   drv <- dbDriver("PostgreSQL")
   #drv <- dbDriver("PostgreSQL")
   con <- dbConnect(drv, dbname = db, host=host_db, port=db_port, user=db_user, password=db_password)
